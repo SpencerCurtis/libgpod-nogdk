@@ -15,6 +15,7 @@ libgpod_la_SOURCES = 		\
 	itdb_iphone.c		\
 	itdb_itunesdb.c 	\
 	itdb_photoalbum.c 	\
+	itdb_photos_dir_minimal.c \
 	itdb_playlist.c  	\
 	itdb_plist.c		\
 	itdb_sqlite.c		\
