@@ -236,7 +236,10 @@ gboolean itdb_hash58_write_hash (Itdb_Device *device,
     gsize len;
     MhbdHeader *header;
    
-    g_assert (itdb_device_get_checksum_type (device) == ITDB_CHECKSUM_HASH58);
+    /* HASH72 devices (Nano 5G+) also need hash58 for iTunesCDB validation.
+     * Finder writes both hashes with hashing_scheme=1 (HASH58). */
+    g_assert (itdb_device_get_checksum_type (device) == ITDB_CHECKSUM_HASH58
+              || itdb_device_get_checksum_type (device) == ITDB_CHECKSUM_HASH72);
 
     if (!itdb_device_get_hex_uuid(device, firewire_id)) {
 	g_set_error (error, 0, -1, "Couldn't find the iPod firewire ID");

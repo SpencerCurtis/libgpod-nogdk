@@ -1,7 +1,7 @@
 /*
 |  Copyright (c) 2009 Chris Lee <clee@mg8.org>
 |  Copyright (C) 2009 Christophe Fergeau <cfergeau@mandriva.com>
-| 
+|
 |  The code contained in this file is free software; you can redistribute
 |  it and/or modify it under the terms of the GNU Lesser General Public
 |  License as published by the Free Software Foundation; either version
@@ -48,7 +48,7 @@ static const uint8_t AES_KEY[16] = { 0x61, 0x8c, 0xa1, 0x0d, 0xc7, 0xf5, 0x7f, 0
  */
 static void hash_generate(uint8_t signature[46],
 			  const uint8_t sha1[20],
-			  const uint8_t iv[16], 
+			  const uint8_t iv[16],
 			  const uint8_t random_bytes[12])
 {
 	uint8_t output[32] = { 0 }, plaintext[32] = { 0 };
@@ -71,7 +71,7 @@ static void hash_generate(uint8_t signature[46],
  */
 static int hash_extract(const uint8_t signature[46],
 			const uint8_t sha1[20],
-			uint8_t iv[16], 
+			uint8_t iv[16],
 			uint8_t random_bytes[12])
 {
 	uint8_t plaintext[32] = { 0 }, output[32] = { 0 };
@@ -140,7 +140,7 @@ static gboolean write_hash_info (const Itdb_Device *device,
     success = g_file_set_contents (filename, (void *)&hash_info,
 				   sizeof (hash_info), NULL);
     g_free (filename);
-    
+
     return success;
 }
 
@@ -180,7 +180,7 @@ static struct Hash78Info *read_hash_info (const Itdb_Device *device)
     return info;
 }
 
-static void itdb_hash72_compute_itunesdb_sha1 (unsigned char *itdb_data, 
+static void itdb_hash72_compute_itunesdb_sha1 (unsigned char *itdb_data,
 					       gsize itdb_len,
 					       unsigned char sha1[20])
 {
@@ -215,8 +215,8 @@ static void itdb_hash72_compute_itunesdb_sha1 (unsigned char *itdb_data,
     memcpy (&header->unk_0x32, backup32, sizeof (backup32));
 }
 
-gboolean itdb_hash72_extract_hash_info (const Itdb_Device *device, 
-					unsigned char *itdb_data, 
+gboolean itdb_hash72_extract_hash_info (const Itdb_Device *device,
+					unsigned char *itdb_data,
 					gsize itdb_len)
 {
     guchar hash72[46];
@@ -259,7 +259,7 @@ gboolean itdb_hash72_extract_hash_info (const Itdb_Device *device,
     return write_hash_info (device, iv, random_bytes);
 }
 
-gboolean itdb_hash72_compute_hash_for_sha1 (const Itdb_Device *device, 
+gboolean itdb_hash72_compute_hash_for_sha1 (const Itdb_Device *device,
 					    const guchar sha1[20],
 					    guchar signature[46],
                                             GError **error)
@@ -280,8 +280,8 @@ gboolean itdb_hash72_compute_hash_for_sha1 (const Itdb_Device *device,
     return TRUE;
 }
 
-gboolean itdb_hash72_write_hash (const Itdb_Device *device, 
-				 unsigned char *itdb_data, 
+gboolean itdb_hash72_write_hash (const Itdb_Device *device,
+				 unsigned char *itdb_data,
 				 gsize itdb_len,
 				 GError **error)
 {

@@ -606,12 +606,15 @@ static int mk_Library(Itdb_iTunesDB *itdb,
     sqlite3_stmt *stmt_artist = NULL;
     sqlite3_stmt *stmt_composer = NULL;
     sqlite3_stmt *stmt_video_info = NULL;
+    sqlite3_stmt *stmt_track_artist = NULL;
+    sqlite3_stmt *stmt_track_size_calc = NULL;
     char *errmsg = NULL;
     struct stat fst;
     GList *gl = NULL;
     Itdb_Playlist *dev_playlist = NULL;
     int idx = 0;
     int pos = 0;
+    int track_pos = 0;
     GHashTable *genre_map;
     GHashTable **orders = NULL;
     guint32 genre_index;
@@ -665,22 +668,27 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	goto leave;
     }
     if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"container\" "
-	    "VALUES(?,?,?,?,:name,?,?,?,?,?,?,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);", -1, &stmt_container, NULL)) {
+	    "VALUES(?,?,?,?,:name,?,?,?,?,?,?,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);", -1, &stmt_container, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"genre_map\" (id,genre,genre_order) VALUES(?,?,0);", -1, &stmt_genre_map, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"genre_map\" VALUES(?,?,0,0,1,0,0);", -1, &stmt_genre_map, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
     if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"item\" "
-	    "(pid,media_kind,date_modified,year,is_compilation,remember_bookmark,exclude_from_shuffle,artwork_status,artwork_cache_id,"
-	    "start_time_ms,stop_time_ms,total_time_ms,total_burn_time_ms,track_number,track_count,disc_number,disc_count,"
-	    "bpm,relative_volume,eq_preset,radio_stream_status,genre_id,album_pid,artist_pid,composer_pid,title,artist,album,"
-	    "album_artist,composer,sort_title,sort_artist,sort_album,sort_album_artist,sort_composer,title_order,artist_order,"
-	    "album_order,genre_order,composer_order,album_artist_order,album_by_artist_order,series_name_order,comment,grouping,"
-	    "description,description_long) "
-	    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_item, NULL)) {
+	    "(pid,revision_level,media_kind,is_song,is_audio_book,is_music_video,is_movie,is_tv_show,"
+	    "is_home_video,is_ringtone,is_tone,is_voice_memo,is_book,is_rental,is_itunes_u,is_digital_booklet,"
+	    "is_podcast,date_modified,year,content_rating,content_rating_level,is_compilation,is_user_disabled,"
+	    "remember_bookmark,exclude_from_shuffle,part_of_gapless_album,chosen_by_auto_fill,artwork_status,"
+	    "artwork_cache_id,start_time_ms,stop_time_ms,total_time_ms,total_burn_time_ms,track_number,track_count,"
+	    "disc_number,disc_count,bpm,relative_volume,eq_preset,radio_stream_status,genius_id,genre_id,category_id,"
+	    "album_pid,artist_pid,composer_pid,title,artist,album,album_artist,composer,sort_title,sort_artist,"
+	    "sort_album,sort_album_artist,sort_composer,title_order,artist_order,album_order,genre_order,"
+	    "composer_order,album_artist_order,album_by_artist_order,series_name_order,comment,grouping,"
+	    "description,description_long,collection_description,copyright,track_artist_pid,physical_order,"
+	    "has_lyrics,date_released) "
+	    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_item, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
@@ -688,7 +696,7 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"avformat_info\" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_avformat_info, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"avformat_info\" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_avformat_info, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
@@ -696,42 +704,46 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"album\" VALUES(?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_album, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"album\" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_album, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"artist\" VALUES(?,?,?,?,?,?,?);", -1, &stmt_artist, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"artist\" VALUES(?,?,?,?,?,?,?,?,?,?);", -1, &stmt_artist, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"composer\" (pid,name,name_order,sort_name) VALUES(?,?,?,?);", -1, &stmt_composer, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"composer\" VALUES(?,?,?,?,?,?);", -1, &stmt_composer, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
-    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"video_info\" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_video_info, NULL)) {
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT INTO \"video_info\" VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);", -1, &stmt_video_info, NULL)) {
+	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
+	goto leave;
+    }
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO \"track_artist\" VALUES(?,?,?,?,?,?,?,?,?);", -1, &stmt_track_artist, NULL)) {
+	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
+	goto leave;
+    }
+    if (SQLITE_OK != sqlite3_prepare_v2(db, "INSERT OR REPLACE INTO \"track_size_calc\" VALUES(?,?,?);", -1, &stmt_track_size_calc, NULL)) {
 	fprintf(stderr, "[%s] sqlite3_prepare error: %s\n", __func__, sqlite3_errmsg(db));
 	goto leave;
     }
 
     printf("[%s] - inserting into \"version_info\"\n", __func__);
-    /* INSERT INTO "version_info" VALUES(1,2,40,0,0,0,2); */
+    /* Finder writes: VALUES(1,1,117,0,0,1100,1) for Nano 5G */
     idx = 0;
     /* id */
     sqlite3_bind_int(stmt_version_info, ++idx, 1);
     /* major */
-    /* FIXME: the versioning scheme needs to be updated in libgpod using */
-    /* major+minor version, this is a workaround */
-    sqlite3_bind_int(stmt_version_info, ++idx, (itdb->version >= 0x28) ? 2 : 1);
+    sqlite3_bind_int(stmt_version_info, ++idx, 1);
     /* minor */
-    sqlite3_bind_int(stmt_version_info, ++idx, itdb->version);
+    sqlite3_bind_int(stmt_version_info, ++idx, 117);
     /* compatibility */
-    /* This has an unknown meaning. use 0. */
     sqlite3_bind_int(stmt_version_info, ++idx, 0);
     /* update_level */
-    /* This has an unknown meaning. use 0. */
     sqlite3_bind_int(stmt_version_info, ++idx, 0);
-    /* device_update_level, default is 0 */
-    sqlite3_bind_int(stmt_version_info, ++idx, 0);
+    /* device_update_level */
+    sqlite3_bind_int(stmt_version_info, ++idx, 1100);
     /* platform, 1 = MacOS, 2 = Windows */
     sqlite3_bind_int(stmt_version_info, ++idx, itdb->priv->platform);
 
@@ -745,8 +757,11 @@ static int mk_Library(Itdb_iTunesDB *itdb,
     printf("[%s] - inserting into \"genre_map\"\n", __func__);
     genre_map = g_hash_table_new(g_str_hash, g_str_equal);
 
-    /* build genre_map */
-    genre_index = 1;
+    /* Insert Unknown Genre sentinel at id=1 (firmware expects this) */
+    sqlite3_exec(db, "INSERT INTO \"genre_map\" VALUES(1,'Unknown Genre',4294967295,1,1,0,0);", NULL, NULL, NULL);
+
+    /* build genre_map, starting at id=2 (id=1 reserved for Unknown Genre) */
+    genre_index = 2;
     for (gl = itdb->tracks; gl; gl = gl->next) {
 	Itdb_Track *track = gl->data;
 	if ((track->genre == NULL) || (g_hash_table_lookup(genre_map, track->genre) != NULL))
@@ -917,6 +932,7 @@ static int mk_Library(Itdb_iTunesDB *itdb,
     printf("[%s] - processing %d tracks\n", __func__, g_list_length(itdb->tracks));
     orders = compute_key_orders(itdb->tracks);
 
+    track_pos = 0;
     for (gl = itdb->tracks; gl; gl = gl->next) {
 	Itdb_Track *track = gl->data;
 	Itdb_Item_Id *this_album = NULL;
@@ -928,41 +944,89 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	gpointer genre_id = NULL;
 	int audio_format;
 	int aw_id;
+	guint32 mt;
 
 	/* printf("[%s] -- inserting into \"item\"\n", __func__); */
 	res = sqlite3_reset(stmt_item);
 	if (res != SQLITE_OK) {
 	    fprintf(stderr, "[%s] 1 sqlite3_reset returned %d\n", __func__, res);
 	}
-	/* INSERT INTO "item" VALUES(-6197982141081478573,NULL,1,1,0,0,0,0,0,0,0,0,0,0,2004,0,0,0,0,0,0,2,0,0.0,0.0,213812.0,NULL,1,0,0,0,0,0,NULL,NULL,0,0,0,-7670716306765259718,-7576753259813584028,0,'Enjoy the silence 2004 (Reinterpreted by Mike Shinoda)','Depeche Mode','Enjoy The Silence 04 CDS','Depeche Mode',NULL,'Enjoy the silence 2004 (Reinterpreted by Mike Shinoda)','Depeche Mode','Enjoy The Silence 04 CDS','Depeche Mode',NULL,100,100,100,100,100,100,NULL,100,'Lbl MUTE C:MUTE RCDBONG034',NULL,NULL,NULL,1,0,0,0,0,1,1,NULL,NULL,NULL,NULL,NULL,NULL,NULL); */
+
+	/* Compute bitflags from mediatype (previously done by SQL triggers) */
+	mt = track->mediatype;
+
+	/* Look up related pids early since we need artist_pid for track_artist_pid */
+	this_album = g_hash_table_lookup(album_ids, track);
+	if (this_album) {
+	    album_pid = this_album->sql_id;
+	}
+	this_artist = g_hash_table_lookup(artist_ids, track);
+	if (this_artist) {
+	    artist_pid = this_artist->sql_id;
+	}
+	this_composer = g_hash_table_lookup(composer_ids, track);
+	if (this_composer) {
+	    composer_pid = this_composer->sql_id;
+	}
+
 	idx = 0;
 	/* pid */
 	sqlite3_bind_int64(stmt_item, ++idx, track->dbid);
+	/* revision_level */
+	sqlite3_bind_null(stmt_item, ++idx);
 	/* media_kind */
-	/* NOTE: this is one of  */
-	/*  song = 1 */
-	/*  audio_book = 8 */
-	/*  music_video = 32 */
-	/*  movie = 2 */
-	/*  tv_show = 64 */
-	/*  ringtone = 16384 */
-	/*  podcast = 4 */
-	/*  rental = 32768 */
-	sqlite3_bind_int(stmt_item, ++idx, track->mediatype);
+	sqlite3_bind_int(stmt_item, ++idx, mt);
+	/* is_song */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_AUDIO) ? 1 : 0);
+	/* is_audio_book */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_AUDIOBOOK) ? 1 : 0);
+	/* is_music_video */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_MUSICVIDEO) ? 1 : 0);
+	/* is_movie */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_MOVIE) ? 1 : 0);
+	/* is_tv_show */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_TVSHOW) ? 1 : 0);
+	/* is_home_video */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
+	/* is_ringtone */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_RINGTONE) ? 1 : 0);
+	/* is_tone */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
+	/* is_voice_memo */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_MEMO) ? 1 : 0);
+	/* is_book */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & (ITDB_MEDIATYPE_EPUB_BOOK | ITDB_MEDIATYPE_PDF_BOOK)) ? 1 : 0);
+	/* is_rental */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_RENTAL) ? 1 : 0);
+	/* is_itunes_u */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_ITUNES_U) ? 1 : 0);
+	/* is_digital_booklet */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
+	/* is_podcast */
+	sqlite3_bind_int(stmt_item, ++idx, (mt & ITDB_MEDIATYPE_PODCAST) ? 1 : 0);
 	/* date_modified */
 	sqlite3_bind_int(stmt_item, ++idx, timeconv(track->time_modified));
 	/* year */
 	sqlite3_bind_int(stmt_item, ++idx, track->year);
+	/* content_rating */
+	sqlite3_bind_int(stmt_item, ++idx, track->explicit_flag);
+	/* content_rating_level */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
 	/* is_compilation */
 	sqlite3_bind_int(stmt_item, ++idx, track->compilation);
+	/* is_user_disabled */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
 	/* remember_bookmark */
 	sqlite3_bind_int(stmt_item, ++idx, track->remember_playback_position);
 	/* exclude_from_shuffle */
 	sqlite3_bind_int(stmt_item, ++idx, track->skip_when_shuffling);
+	/* part_of_gapless_album */
+	sqlite3_bind_int(stmt_item, ++idx, track->gapless_album_flag);
+	/* chosen_by_auto_fill */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
 	/* artwork_status 1 = has artwork, 2 = doesn't */
 	sqlite3_bind_int(stmt_item, ++idx, track->has_artwork);
 	/* artwork_cache_id */
-	/* TODO check if this value is correct */
 	aw_id = 0;
 	if (track->artwork) {
 	    aw_id = track->artwork->id;
@@ -974,8 +1038,7 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	sqlite3_bind_double(stmt_item, ++idx, track->stoptime);
 	/* total_time_ms */
 	sqlite3_bind_double(stmt_item, ++idx, track->tracklen);
-	/* total_burn_time_ms --> set to NULL */
-	/* TODO where is this stored? */
+	/* total_burn_time_ms */
 	sqlite3_bind_null(stmt_item, ++idx);
 	/* track_number */
 	sqlite3_bind_int(stmt_item, ++idx, track->track_nr);
@@ -989,34 +1052,27 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	sqlite3_bind_int(stmt_item, ++idx, track->BPM);
 	/* relative_volume */
 	sqlite3_bind_int(stmt_item, ++idx, track->volume);
-	/* eq_preset --> set to NULL */
+	/* eq_preset */
 	sqlite3_bind_null(stmt_item, ++idx);
-	/* radio_stream_status --> set to NULL */
+	/* radio_stream_status */
 	sqlite3_bind_null(stmt_item, ++idx);
+	/* genius_id */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
 	/* genre_id */
 	genre_id = NULL;
 	if (track->genre && *track->genre && (genre_id = g_hash_table_lookup(genre_map, track->genre)) != NULL) {
 	    sqlite3_bind_int(stmt_item, ++idx, GPOINTER_TO_UINT(genre_id));
+	} else {
+	    /* 1 = Unknown Genre sentinel */
+	    sqlite3_bind_int(stmt_item, ++idx, 1);
 	}
-	else
-	    sqlite3_bind_int(stmt_item, ++idx, 0);
-	/* album_pid -7670716306765259718 */
-	this_album = g_hash_table_lookup(album_ids, track);
-	if (this_album) {
-	    album_pid = this_album->sql_id;
-	}
+	/* category_id */
+	sqlite3_bind_int(stmt_item, ++idx, 0);
+	/* album_pid */
 	sqlite3_bind_int64(stmt_item, ++idx, album_pid);
-	/* artist_pid -7576753259813584028 */
-	this_artist = g_hash_table_lookup(artist_ids, track);
-	if (this_artist) {
-	    artist_pid = this_artist->sql_id;
-	}
+	/* artist_pid */
 	sqlite3_bind_int64(stmt_item, ++idx, artist_pid);
 	/* composer_pid */
-	this_composer = g_hash_table_lookup(composer_ids, track);
-	if (this_composer) {
-	    composer_pid = this_composer->sql_id;
-	}
 	sqlite3_bind_int64(stmt_item, ++idx, composer_pid);
 	/* title */
         bind_first_text(stmt_item, ++idx, 1, track->title);
@@ -1038,8 +1094,6 @@ static int mk_Library(Itdb_iTunesDB *itdb,
         bind_first_text(stmt_item, ++idx, 2, track->sort_albumartist, track->albumartist);
 	/* sort_composer */
         bind_first_text(stmt_item, ++idx, 2, track->sort_composer, track->composer);
-
-	/* TODO figure out where these values are stored */
 	/* title_order */
 	sqlite3_bind_int(stmt_item, ++idx, lookup_order(orders, ORDER_TITLE, track));
 	/* artist_order */
@@ -1063,8 +1117,19 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	/* description */
         bind_first_text(stmt_item, ++idx, 1, track->description);
 	/* description_long */
-	/* TODO libgpod doesn't know about it */
 	sqlite3_bind_null(stmt_item, ++idx);
+	/* collection_description */
+	sqlite3_bind_null(stmt_item, ++idx);
+	/* copyright */
+	sqlite3_bind_null(stmt_item, ++idx);
+	/* track_artist_pid (use artist_pid as track artist) */
+	sqlite3_bind_int64(stmt_item, ++idx, artist_pid);
+	/* physical_order */
+	sqlite3_bind_int(stmt_item, ++idx, track_pos++);
+	/* has_lyrics */
+	sqlite3_bind_int(stmt_item, ++idx, track->lyrics_flag);
+	/* date_released */
+	sqlite3_bind_int(stmt_item, ++idx, timeconv(track->time_released));
 
 	res = sqlite3_step(stmt_item);
 	if (res != SQLITE_DONE) {
@@ -1117,6 +1182,8 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	sqlite3_bind_int(stmt_avformat_info, ++idx, audio_format);
 	/* bit_rate */
 	sqlite3_bind_int(stmt_avformat_info, ++idx, track->bitrate);
+	/* channels */
+	sqlite3_bind_int(stmt_avformat_info, ++idx, 0);
 	/* sample_rate */
 	sqlite3_bind_double(stmt_avformat_info, ++idx, track->samplerate);
 	/* duration (in samples) (track->tracklen is in ms) */
@@ -1155,18 +1222,14 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    if (res != SQLITE_OK) {
 		fprintf(stderr, "[%s] 1 sqlite3_reset returned %d\n", __func__, res);
 	    }
-	    /* INSERT INTO "album" VALUES(-7670716306765259718,2,0,0,-7576753259813584028,0,'Enjoy The Silence 04 CDS',100,0,NULL,0); */
 	    idx = 0;
 	    /* pid */
 	    sqlite3_bind_int64(stmt_album, ++idx, album_pid);
 	    /* kind */
-	    /* TODO use field from mhia */
 	    sqlite3_bind_int(stmt_album, ++idx, 2);
 	    /* artwork_status */
-	    /* TODO */
 	    sqlite3_bind_int(stmt_album, ++idx, 0);
 	    /* artwork_item_pid */
-	    /* TODO */
 	    sqlite3_bind_int(stmt_album, ++idx, 0);
 	    /* artist_pid */
 	    sqlite3_bind_int64(stmt_album, ++idx, artist_pid);
@@ -1177,14 +1240,27 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    /* name_order */
 	    sqlite3_bind_int(stmt_album, ++idx, lookup_order(orders, ORDER_ALBUM_ARTIST, track));
 	    /* all_compilations */
-	    /* TODO */
 	    sqlite3_bind_int(stmt_album, ++idx, 0);
 	    /* feed_url */
-	    /* TODO this is for podcasts? */
 	    sqlite3_bind_null(stmt_album, ++idx);
 	    /* season_number */
-	    /* TODO this is for tv shows?! */
 	    sqlite3_bind_int(stmt_album, ++idx, 0);
+	    /* is_unknown */
+	    sqlite3_bind_int(stmt_album, ++idx, 0);
+	    /* has_songs */
+	    sqlite3_bind_int(stmt_album, ++idx, (mt & ITDB_MEDIATYPE_AUDIO) ? 1 : 0);
+	    /* has_music_videos */
+	    sqlite3_bind_int(stmt_album, ++idx, (mt & ITDB_MEDIATYPE_MUSICVIDEO) ? 1 : 0);
+	    /* sort_order */
+	    sqlite3_bind_int(stmt_album, ++idx, 0);
+	    /* artist_order */
+	    sqlite3_bind_int(stmt_album, ++idx, 0);
+	    /* has_any_compilations */
+	    sqlite3_bind_int(stmt_album, ++idx, 0);
+	    /* sort_name */
+	    bind_first_text(stmt_album, ++idx, 2, track->sort_album, track->album);
+	    /* artist_count_calc */
+	    sqlite3_bind_int(stmt_album, ++idx, 1);
 
 	    res = sqlite3_step(stmt_album);
 	    if (res == SQLITE_DONE) {
@@ -1201,26 +1277,27 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    if (res != SQLITE_OK) {
 		fprintf(stderr, "[%s] 1 sqlite3_reset returned %d\n", __func__, res);
 	    }
-	    /* INSERT INTO "artist" VALUES(-7576753259813584028,2,0,0,'Depeche Mode',100,'Depeche Mode'); */
 	    idx = 0;
 	    /* pid */
 	    sqlite3_bind_int64(stmt_artist, ++idx, artist_pid);
 	    /* kind */
-	    /* TODO use field from mhii */
 	    sqlite3_bind_int(stmt_artist, ++idx, 2);
 	    /* artwork_status */
-	    /* TODO */
 	    sqlite3_bind_int(stmt_artist, ++idx, 0);
 	    /* artwork_album_pid */
-	    /* TODO */
 	    sqlite3_bind_int(stmt_artist, ++idx, 0);
 	    /* name */
 	    sqlite3_bind_text(stmt_artist, ++idx, track->artist, -1, SQLITE_STATIC);
 	    /* name_order */
 	    sqlite3_bind_int(stmt_artist, ++idx, lookup_order(orders, ORDER_ARTIST, track));
 	    /* sort_name */
-	    /* TODO always same as 'name'? */
-	    sqlite3_bind_text(stmt_artist, ++idx, track->artist, -1, SQLITE_STATIC);
+	    bind_first_text(stmt_artist, ++idx, 2, track->sort_artist, track->artist);
+	    /* is_unknown */
+	    sqlite3_bind_int(stmt_artist, ++idx, 0);
+	    /* has_songs */
+	    sqlite3_bind_int(stmt_artist, ++idx, (mt & ITDB_MEDIATYPE_AUDIO) ? 1 : 0);
+	    /* has_music_videos */
+	    sqlite3_bind_int(stmt_artist, ++idx, (mt & ITDB_MEDIATYPE_MUSICVIDEO) ? 1 : 0);
 
 	    res = sqlite3_step(stmt_artist);
 	    if (res == SQLITE_DONE) {
@@ -1244,8 +1321,11 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    /* name_order */
 	    sqlite3_bind_int(stmt_composer, ++idx, lookup_order(orders, ORDER_COMPOSER, track));
 	    /* sort_name */
-	    /* TODO always same as 'name'? */
-	    sqlite3_bind_text(stmt_composer, ++idx, track->composer, -1, SQLITE_STATIC);
+	    bind_first_text(stmt_composer, ++idx, 2, track->sort_composer, track->composer);
+	    /* is_unknown */
+	    sqlite3_bind_int(stmt_composer, ++idx, 0);
+	    /* has_music */
+	    sqlite3_bind_int(stmt_composer, ++idx, 1);
 
 	    res = sqlite3_step(stmt_composer);
 	    if (res == SQLITE_DONE) {
@@ -1280,6 +1360,8 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    sqlite3_bind_int(stmt_video_info, ++idx, 0);
 	    /* is_anamorphic INTEGER */
 	    sqlite3_bind_int(stmt_video_info, ++idx, 0);
+	    /* is_hd INTEGER */
+	    sqlite3_bind_int(stmt_video_info, ++idx, 0);
 	    /* season_number INTEGER */
 	    sqlite3_bind_int(stmt_video_info, ++idx, track->season_nr);
 	    /* audio_language INTEGER */
@@ -1297,7 +1379,7 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 	    /* series_name TEXT */
 	    sqlite3_bind_text(stmt_video_info, ++idx, track->tvshow, -1, SQLITE_STATIC);
 	    /* sort_series_name TEXT */
-	    bind_first_text(stmt_item, ++idx, 2, track->sort_tvshow, track->tvshow);
+	    bind_first_text(stmt_video_info, ++idx, 2, track->sort_tvshow, track->tvshow);
 	    /* episode_id TEXT */
 	    sqlite3_bind_text(stmt_video_info, ++idx, track->tvepisode, -1, SQLITE_STATIC);
 	    /* episode_sort_id INTEGER */
@@ -1316,6 +1398,88 @@ static int mk_Library(Itdb_iTunesDB *itdb,
 		fprintf(stderr, "[%s] 8 sqlite3_step returned %d\n", __func__, res);
 	    }
 	}
+
+	/* Insert into track_artist (mirrors artist, using artist_pid) */
+	if (this_artist) {
+	    res = sqlite3_reset(stmt_track_artist);
+	    if (res != SQLITE_OK) {
+		fprintf(stderr, "[%s] 1 sqlite3_reset returned %d\n", __func__, res);
+	    }
+	    idx = 0;
+	    /* pid */
+	    sqlite3_bind_int64(stmt_track_artist, ++idx, artist_pid);
+	    /* name */
+	    sqlite3_bind_text(stmt_track_artist, ++idx, track->artist, -1, SQLITE_STATIC);
+	    /* name_order */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, lookup_order(orders, ORDER_ARTIST, track));
+	    /* sort_name */
+	    bind_first_text(stmt_track_artist, ++idx, 2, track->sort_artist, track->artist);
+	    /* has_songs */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, (mt & ITDB_MEDIATYPE_AUDIO) ? 1 : 0);
+	    /* has_music_videos */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, (mt & ITDB_MEDIATYPE_MUSICVIDEO) ? 1 : 0);
+	    /* has_non_compilation_tracks */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, track->compilation ? 0 : 1);
+	    /* is_unknown */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, 0);
+	    /* album_count */
+	    sqlite3_bind_int(stmt_track_artist, ++idx, 0);
+
+	    res = sqlite3_step(stmt_track_artist);
+	    if (res == SQLITE_DONE) {
+		/* expected result */
+	    } else {
+		fprintf(stderr, "[%s] 9 sqlite3_step returned %d\n", __func__, res);
+	    }
+	}
+    }
+
+    /* Insert sentinel rows required by firmware */
+    printf("[%s] - inserting sentinel rows\n", __func__);
+
+    /* Unknown Album sentinel */
+    sqlite3_exec(db, "INSERT OR IGNORE INTO \"album\" VALUES(7152066490436009859,2,0,0,0,0,'Unknown Album',4294967295,0,NULL,0,1,0,0,0,0,0,NULL,0);", NULL, NULL, NULL);
+
+    /* Unknown Artist sentinel */
+    sqlite3_exec(db, "INSERT OR IGNORE INTO \"artist\" VALUES(-6069883557144445869,2,0,0,'Unknown Artist',4294967295,NULL,1,0,0);", NULL, NULL, NULL);
+
+    /* Unknown Composer sentinel */
+    sqlite3_exec(db, "INSERT OR IGNORE INTO \"composer\" VALUES(1,'Unknown Composer',4294967295,NULL,1,1);", NULL, NULL, NULL);
+
+    /* Unknown TrackArtist sentinel */
+    sqlite3_exec(db, "INSERT OR IGNORE INTO \"track_artist\" VALUES(2,'Unknown Artist',4294967295,NULL,0,0,0,1,0);", NULL, NULL, NULL);
+
+    /* track_size_calc rows */
+    printf("[%s] - inserting track_size_calc\n", __func__);
+    {
+	gint64 total_audio_size = 0;
+	for (gl = itdb->tracks; gl; gl = gl->next) {
+	    Itdb_Track *t = gl->data;
+	    if (t->mediatype & ITDB_MEDIATYPE_AUDIO) {
+		total_audio_size += t->size;
+	    }
+	}
+	sqlite3_exec(db, "DELETE FROM \"track_size_calc\";", NULL, NULL, NULL);
+	res = sqlite3_reset(stmt_track_size_calc);
+	idx = 0;
+	sqlite3_bind_int(stmt_track_size_calc, ++idx, 1);
+	sqlite3_bind_text(stmt_track_size_calc, ++idx, "audio", -1, SQLITE_STATIC);
+	sqlite3_bind_int64(stmt_track_size_calc, ++idx, total_audio_size);
+	sqlite3_step(stmt_track_size_calc);
+
+	res = sqlite3_reset(stmt_track_size_calc);
+	idx = 0;
+	sqlite3_bind_int(stmt_track_size_calc, ++idx, 2);
+	sqlite3_bind_text(stmt_track_size_calc, ++idx, "video", -1, SQLITE_STATIC);
+	sqlite3_bind_int64(stmt_track_size_calc, ++idx, 0);
+	sqlite3_step(stmt_track_size_calc);
+
+	res = sqlite3_reset(stmt_track_size_calc);
+	idx = 0;
+	sqlite3_bind_int(stmt_track_size_calc, ++idx, 3);
+	sqlite3_bind_text(stmt_track_size_calc, ++idx, "music_video", -1, SQLITE_STATIC);
+	sqlite3_bind_int64(stmt_track_size_calc, ++idx, 0);
+	sqlite3_step(stmt_track_size_calc);
     }
 
     sqlite3_exec(db, "UPDATE album SET artwork_item_pid = (SELECT item.pid FROM item WHERE item.artwork_cache_id != 0 AND item.album_pid = album.pid LIMIT 1);", NULL, NULL, NULL);
@@ -1359,8 +1523,17 @@ leave:
     if (stmt_artist) {
 	sqlite3_finalize(stmt_artist);
     }
+    if (stmt_composer) {
+	sqlite3_finalize(stmt_composer);
+    }
     if (stmt_video_info) {
 	sqlite3_finalize(stmt_video_info);
+    }
+    if (stmt_track_artist) {
+	sqlite3_finalize(stmt_track_artist);
+    }
+    if (stmt_track_size_calc) {
+	sqlite3_finalize(stmt_track_size_calc);
     }
     if (genre_map) {
 	g_hash_table_destroy(genre_map);
@@ -2275,11 +2448,8 @@ int itdb_sqlite_generate_itdbs(FExport *fexp)
 
     tzoffset = fexp->itdb->tzoffset;
 
-    tmpdir = g_build_path(g_get_tmp_dir(), tmpnam(NULL), NULL);
-    if (g_mkdir(tmpdir, 0755) != 0) {
-	g_set_error (&fexp->error, G_FILE_ERROR, g_file_error_from_errno(errno),
-		     "Could not create temporary directory '%s': %s",
-		     tmpdir, strerror(errno));
+    tmpdir = g_dir_make_tmp("libgpod-XXXXXX", &fexp->error);
+    if (tmpdir == NULL) {
 	res = -1;
 	goto leave;
     }
