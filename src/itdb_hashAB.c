@@ -1,6 +1,6 @@
 /*
 |  Copyright (c) 2010 Nikias Bassen <nikias@gmx.li>
-| 
+|
 |  The code contained in this file is free software; you can redistribute
 |  it and/or modify it under the terms of the GNU Lesser General Public
 |  License as published by the Free Software Foundation; either version
@@ -19,6 +19,11 @@
 |  iTunes and iPod are trademarks of Apple
 |
 |  This product is not supported/written/published by Apple!
+|
+|  Modified 2026-03-08 by Spencer Curtis (libgpod-nogdk fork):
+|  Replaced runtime dlopen of libhashab blob with statically-linked
+|  calcHashAB implementation from dstaley/hashab (The Unlicense).
+|  See src/hashab/ for the vendored source and its license.
 */
 
 #if HAVE_CONFIG_H
@@ -31,41 +36,19 @@
 
 #include <glib/gstdio.h>
 
-#include <gmodule.h>
-
 #include "itdb_device.h"
 #include "db-itunes-parser.h"
 #include "itdb_private.h"
 
-typedef void (*calcHashAB_t)(unsigned char target[57], const unsigned char sha1[20], const unsigned char uuid[20], const unsigned char rnd_bytes[23]);
-static calcHashAB_t calc_hashAB = NULL;
-
-static gboolean load_libhashab()
-{
-	gchar *path;
-	GModule *handle;
-
-	if (!g_module_supported()) {
-		return FALSE;
-	}
-	path = g_module_build_path(LIBGPOD_BLOB_DIR, "hashab");
-	handle = g_module_open(path, G_MODULE_BIND_LAZY);
-	g_free(path);
-	if (!handle) {
-		return FALSE;
-	}
-
-	if (!g_module_symbol(handle, "calcHashAB", (void**)&calc_hashAB)) {
-		g_module_close(handle);
-		g_warning("symbol 'calcHashAB' not found");
-		return FALSE;
-	}
-	g_module_make_resident(handle);
-
-	printf("***** hashAB support successfully loaded *****\n");
-
-	return TRUE;
-}
+/*
+ * hashAB implementation from dstaley/hashab (The Unlicense / public domain).
+ * Reverse-engineered from Apple's libhashab32.so binary.
+ * https://github.com/dstaley/hashab
+ *
+ * Statically linked instead of the original dlopen approach, which required
+ * a blob that was never publicly distributed.
+ */
+#include "hashab/calcHashAB.h"
 
 static void itdb_hashAB_compute_itunesdb_sha1 (unsigned char *itdb_data, 
 					       gsize itdb_len,
@@ -111,16 +94,9 @@ gboolean itdb_hashAB_compute_hash_for_sha1 (const Itdb_Device *device,
     unsigned char uuid[20];
     unsigned char rndpart[23] = "ABCDEFGHIJKLMNOPQRSTUVW";
 
-    if (calc_hashAB == NULL) {
-	if (!load_libhashab()) {
-	    g_set_error (error, 0, -1, "Unsupported checksum type");
-	    return FALSE;
-	}
-    }
-
     if (!itdb_device_get_hex_uuid(device, uuid)) return FALSE;
 
-    calc_hashAB(signature, sha1, uuid, rndpart);
+    calcHashAB(signature, sha1, uuid, rndpart);
 
     return TRUE;
 }
